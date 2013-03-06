@@ -114,6 +114,7 @@ vdev_file_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
                       );
 
 	if (error) {
+        printf("vdev_file_open failed?!\n");
 		vd->vdev_stat.vs_aux = VDEV_AUX_OPEN_FAILED;
 		return (error);
 	}

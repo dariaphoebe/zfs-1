@@ -39,6 +39,7 @@
 
 typedef struct mirror_child {
 	vdev_t		*mc_vd;
+    vdev_ops_t      *mc_vd_ops;
 	uint64_t	mc_offset;
 	int		mc_error;
 	uint8_t		mc_tried;
@@ -106,6 +107,11 @@ vdev_mirror_map_alloc(zio_t *zio)
 
 			mc->mc_vd = vdev_lookup_top(spa, DVA_GET_VDEV(&dva[c]));
 			mc->mc_offset = DVA_GET_OFFSET(&dva[c]);
+            if (mc->mc_vd != NULL) {
+                mc->mc_vd_ops = mc->mc_vd->vdev_ops;
+            } else{
+                mc->mc_vd_ops = &vdev_missing_ops;
+            }
 		}
 	} else {
 		c = vd->vdev_children;
@@ -121,6 +127,7 @@ vdev_mirror_map_alloc(zio_t *zio)
 		for (c = 0; c < mm->mm_children; c++) {
 			mc = &mm->mm_child[c];
 			mc->mc_vd = vd->vdev_child[c];
+            mc->mc_vd_ops = mc->mc_vd->vdev_ops;
 			mc->mc_offset = zio->io_offset;
 		}
 	}
@@ -283,7 +290,7 @@ vdev_mirror_io_start(zio_t *zio)
 			for (c = 0; c < mm->mm_children; c++) {
 				mc = &mm->mm_child[c];
 				zio_nowait(zio_vdev_child_io(zio, zio->io_bp,
-				    mc->mc_vd, mc->mc_offset,
+                    mc->mc_vd, mc->mc_vd_ops, mc->mc_offset,
 				    zio_buf_alloc(zio->io_size), zio->io_size,
 				    zio->io_type, zio->io_priority, 0,
 				    vdev_mirror_scrub_done, mc));
@@ -308,7 +315,8 @@ vdev_mirror_io_start(zio_t *zio)
 	while (children--) {
 		mc = &mm->mm_child[c];
 		zio_nowait(zio_vdev_child_io(zio, zio->io_bp,
-		    mc->mc_vd, mc->mc_offset, zio->io_data, zio->io_size,
+            mc->mc_vd, mc->mc_vd_ops, mc->mc_offset,
+            zio->io_data, zio->io_size,
 		    zio->io_type, zio->io_priority, 0,
 		    vdev_mirror_child_done, mc));
 		c++;
@@ -393,7 +401,8 @@ vdev_mirror_io_done(zio_t *zio)
 		mc = &mm->mm_child[c];
 		zio_vdev_io_redone(zio);
 		zio_nowait(zio_vdev_child_io(zio, zio->io_bp,
-		    mc->mc_vd, mc->mc_offset, zio->io_data, zio->io_size,
+            mc->mc_vd, mc->mc_vd_ops, mc->mc_offset,
+            zio->io_data, zio->io_size,
 		    ZIO_TYPE_READ, zio->io_priority, 0,
 		    vdev_mirror_child_done, mc));
 		return;
@@ -433,7 +442,7 @@ vdev_mirror_io_done(zio_t *zio)
 			}
 
 			zio_nowait(zio_vdev_child_io(zio, zio->io_bp,
-			    mc->mc_vd, mc->mc_offset,
+			    mc->mc_vd, mc->mc_vd_ops, mc->mc_offset,
 			    zio->io_data, zio->io_size,
 			    ZIO_TYPE_WRITE, zio->io_priority,
 			    ZIO_FLAG_IO_REPAIR | (unexpected_errors ?

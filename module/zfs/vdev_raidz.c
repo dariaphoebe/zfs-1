@@ -1541,7 +1541,7 @@ vdev_raidz_io_start(zio_t *zio)
 		for (c = 0; c < rm->rm_cols; c++) {
 			rc = &rm->rm_col[c];
 			cvd = vd->vdev_child[rc->rc_devidx];
-			zio_nowait(zio_vdev_child_io(zio, NULL, cvd,
+			zio_nowait(zio_vdev_child_io(zio, NULL, cvd, cvd->vdev_ops,
 			    rc->rc_offset, rc->rc_data, rc->rc_size,
 			    zio->io_type, zio->io_priority, 0,
 			    vdev_raidz_child_done, rc));
@@ -1557,7 +1557,7 @@ vdev_raidz_io_start(zio_t *zio)
 				c = 0;
 			rc = &rm->rm_col[c];
 			cvd = vd->vdev_child[rc->rc_devidx];
-			zio_nowait(zio_vdev_child_io(zio, NULL, cvd,
+			zio_nowait(zio_vdev_child_io(zio, NULL, cvd, cvd->vdev_ops,
 			    rc->rc_offset + rc->rc_size, NULL,
 			    1 << tvd->vdev_ashift,
 			    zio->io_type, zio->io_priority,
@@ -1597,7 +1597,7 @@ vdev_raidz_io_start(zio_t *zio)
 		}
 		if (c >= rm->rm_firstdatacol || rm->rm_missingdata > 0 ||
 		    (zio->io_flags & (ZIO_FLAG_SCRUB | ZIO_FLAG_RESILVER))) {
-			zio_nowait(zio_vdev_child_io(zio, NULL, cvd,
+			zio_nowait(zio_vdev_child_io(zio, NULL, cvd, cvd->vdev_ops,
 			    rc->rc_offset, rc->rc_data, rc->rc_size,
 			    zio->io_type, zio->io_priority, 0,
 			    vdev_raidz_child_done, rc));
@@ -2038,7 +2038,8 @@ vdev_raidz_io_done(zio_t *zio)
 			if (rc->rc_tried)
 				continue;
 			zio_nowait(zio_vdev_child_io(zio, NULL,
-			    vd->vdev_child[rc->rc_devidx],
+                vd->vdev_child[rc->rc_devidx],
+                vd->vdev_child[rc->rc_devidx]->vdev_ops,
 			    rc->rc_offset, rc->rc_data, rc->rc_size,
 			    zio->io_type, zio->io_priority, 0,
 			    vdev_raidz_child_done, rc));
@@ -2118,7 +2119,7 @@ done:
 			if (rc->rc_error == 0)
 				continue;
 
-			zio_nowait(zio_vdev_child_io(zio, NULL, cvd,
+			zio_nowait(zio_vdev_child_io(zio, NULL, cvd, cvd->vdev_ops,
 			    rc->rc_offset, rc->rc_data, rc->rc_size,
 			    ZIO_TYPE_WRITE, zio->io_priority,
 			    ZIO_FLAG_IO_REPAIR | (unexpected_errors ?

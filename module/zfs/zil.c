@@ -551,7 +551,7 @@ zil_create(zilog_t *zilog)
 			BP_ZERO(&blk);
 		}
 
-		error = zio_alloc_zil(zilog->zl_spa, txg, &blk,
+		error = zio_alloc_zil(zilog->zl_spa, txg, &blk, NULL,
 		    ZIL_MIN_BLKSZ, B_TRUE);
 		fastwrite = TRUE;
 
@@ -894,6 +894,7 @@ static void
 zil_lwb_write_init(zilog_t *zilog, lwb_t *lwb)
 {
 	zbookmark_t zb;
+    zio_prop_t zp = { 0 };
 
 	SET_BOOKMARK(&zb, lwb->lwb_blk.blk_cksum.zc_word[ZIL_ZC_OBJSET],
 	    ZB_ZIL_OBJECT, ZB_ZIL_LEVEL,
@@ -904,6 +905,10 @@ zil_lwb_write_init(zilog_t *zilog, lwb_t *lwb)
 		    ZIO_FLAG_CANFAIL);
 	}
 
+    zp.zp_checksum = BP_GET_CHECKSUM(&lwb->lwb_blk);
+    zp.zp_compress = ZIO_COMPRESS_OFF;
+    zp.zp_type = DMU_OT_INTENT_LOG;
+
 	/* Lock so zil_sync() doesn't fastwrite_unmark after zio is created */
 	mutex_enter(&zilog->zl_lock);
 	if (lwb->lwb_zio == NULL) {
@@ -913,7 +918,7 @@ zil_lwb_write_init(zilog_t *zilog, lwb_t *lwb)
 		}
 		lwb->lwb_zio = zio_rewrite(zilog->zl_root_zio, zilog->zl_spa,
 		    0, &lwb->lwb_blk, lwb->lwb_buf, BP_GET_LSIZE(&lwb->lwb_blk),
-		    zil_lwb_write_done, lwb, ZIO_PRIORITY_LOG_WRITE,
+            &zp,zil_lwb_write_done, lwb, ZIO_PRIORITY_LOG_WRITE,
 		    ZIO_FLAG_CANFAIL | ZIO_FLAG_DONT_PROPAGATE |
 		    ZIO_FLAG_FASTWRITE, &zb);
 	}
@@ -1014,7 +1019,7 @@ zil_lwb_write_start(zilog_t *zilog, lwb_t *lwb)
 
 	BP_ZERO(bp);
 	use_slog = USE_SLOG(zilog);
-	error = zio_alloc_zil(spa, txg, bp, zil_blksz, USE_SLOG(zilog));
+	error = zio_alloc_zil(spa, txg, bp, &lwb->lwb_blk, zil_blksz, USE_SLOG(zilog));
 	if (use_slog)
 	{
 		ZIL_STAT_BUMP(zil_itx_metaslab_slog_count);

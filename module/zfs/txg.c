@@ -156,6 +156,7 @@ static void
 txg_thread_exit(tx_state_t *tx, callb_cpr_t *cpr, kthread_t **tpp)
 {
 	ASSERT(*tpp != NULL);
+    printf("   [zio] sync thread exit\n");
 	*tpp = NULL;
 	tx->tx_threads--;
 	cv_broadcast(&tx->tx_exit_cv);
@@ -168,11 +169,15 @@ txg_thread_wait(tx_state_t *tx, callb_cpr_t *cpr, kcondvar_t *cv, uint64_t time)
 {
 	CALLB_CPR_SAFE_BEGIN(cpr);
 
+    printf("   [tgx] waiting on thread %p: time %llu \n", cv, time);
+
 	if (time)
 		(void) cv_timedwait_interruptible(cv, &tx->tx_sync_lock,
 		    ddi_get_lbolt() + time);
 	else
 		cv_wait_interruptible(cv, &tx->tx_sync_lock);
+
+    printf("   [tgx] finished waiting on thread %p\n", cv);
 
 	CALLB_CPR_SAFE_END(cpr, &tx->tx_sync_lock);
 }
@@ -414,6 +419,8 @@ txg_sync_thread(dsl_pool_t *dp)
 	//current->flags |= PF_NOFS;
 #endif /* _KERNEL */
 
+    printf("  [zio] sync thread running\n");
+
 	txg_thread_enter(tx, &cpr);
 
 	start = delta = 0;
@@ -596,10 +603,10 @@ txg_wait_synced(dsl_pool_t *dp, uint64_t txg)
 		txg = tx->tx_open_txg + TXG_DEFER_SIZE;
 	if (tx->tx_sync_txg_waiting < txg)
 		tx->tx_sync_txg_waiting = txg;
-	dprintf("txg=%llu quiesce_txg=%llu sync_txg=%llu\n",
+	printf("txg=%llu quiesce_txg=%llu sync_txg=%llu\n",
 	    txg, tx->tx_quiesce_txg_waiting, tx->tx_sync_txg_waiting);
 	while (tx->tx_synced_txg < txg) {
-		dprintf("broadcasting sync more "
+		printf("broadcasting sync more "
 		    "tx_synced=%llu waiting=%llu dp=%p\n",
 		    tx->tx_synced_txg, tx->tx_sync_txg_waiting, dp);
 		cv_broadcast(&tx->tx_sync_more_cv);

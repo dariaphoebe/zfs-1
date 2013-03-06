@@ -3506,7 +3506,7 @@ spa_create(const char *pool, nvlist_t *nvroot, nvlist_t *props,
 	 * We explicitly wait for the first transaction to complete so that our
 	 * bean counters are appropriately updated.
 	 */
-	txg_wait_synced(spa->spa_dsl_pool, txg);
+    txg_wait_synced(spa->spa_dsl_pool, txg);
 
 	spa_config_sync(spa, B_FALSE, B_TRUE);
 

@@ -41,6 +41,8 @@
 extern "C" {
 #endif
 
+struct vdev_ops;
+
 /*
  * Embedded checksum
  */
@@ -195,11 +197,11 @@ enum zio_flag {
 	ZIO_FLAG_GANG_CHILD	= 1 << 22,
 	ZIO_FLAG_DDT_CHILD	= 1 << 23,
 	ZIO_FLAG_GODFATHER	= 1 << 24,
-	ZIO_FLAG_FASTWRITE      = 1 << 25
+	ZIO_FLAG_FASTWRITE		= 1 << 25
 };
 
 #define	ZIO_FLAG_MUSTSUCCEED		0
-#define ZIO_FLAG_FAILFAST               0x00002
+#define ZIO_FLAG_FAILFAST				0x00002
 
 #define	ZIO_DDT_CHILD_FLAGS(zio)				\
 	(((zio)->io_flags & ZIO_FLAG_DDT_INHERIT) |		\
@@ -242,10 +244,10 @@ extern char *zio_type_name[ZIO_TYPES];
 /*
  * A bookmark is a four-tuple <objset, object, level, blkid> that uniquely
  * identifies any block in the pool.  By convention, the meta-objset (MOS)
- * is objset 0, and the meta-dnode is object 0.  This covers all blocks
+ * is objset 0, and the meta-dnode is object 0.	 This covers all blocks
  * except root blocks and ZIL blocks, which are defined as follows:
  *
- * Root blocks (objset_phys_t) are object 0, level -1:  <objset, 0, -1, 0>.
+ * Root blocks (objset_phys_t) are object 0, level -1:	<objset, 0, -1, 0>.
  * ZIL blocks are bookmarked <objset, 0, -2, blkid == ZIL sequence number>.
  * dmu_sync()ed ZIL data blocks are bookmarked <objset, object, -2, blkid>.
  *
@@ -263,12 +265,12 @@ typedef struct zbookmark {
 	uint64_t	zb_blkid;
 } zbookmark_t;
 
-#define	SET_BOOKMARK(zb, objset, object, level, blkid)  \
-{                                                       \
-	(zb)->zb_objset = objset;                       \
-	(zb)->zb_object = object;                       \
-	(zb)->zb_level = level;                         \
-	(zb)->zb_blkid = blkid;                         \
+#define	SET_BOOKMARK(zb, objset, object, level, blkid)	\
+{														\
+	(zb)->zb_objset = objset;						\
+	(zb)->zb_object = object;						\
+	(zb)->zb_level = level;							\
+	(zb)->zb_blkid = blkid;							\
 }
 
 #define	ZB_DESTROYED_OBJSET	(-1ULL)
@@ -301,7 +303,7 @@ typedef struct zio_prop {
 typedef struct zio_cksum_report zio_cksum_report_t;
 
 typedef void zio_cksum_finish_f(zio_cksum_report_t *rep,
-    const void *good_data);
+	const void *good_data);
 typedef void zio_cksum_free_f(void *cbdata, size_t size);
 
 struct zio_bad_cksum;				/* defined in zio_checksum.h */
@@ -323,7 +325,7 @@ struct zio_cksum_report {
 };
 
 typedef void zio_vsd_cksum_report_f(zio_t *zio, zio_cksum_report_t *zcr,
-    void *arg);
+	void *arg);
 
 zio_vsd_cksum_report_f	zio_vsd_default_cksum_report;
 
@@ -338,15 +340,16 @@ typedef struct zio_gang_node {
 } zio_gang_node_t;
 
 typedef zio_t *zio_gang_issue_func_t(zio_t *zio, blkptr_t *bp,
-    zio_gang_node_t *gn, void *data);
+	zio_gang_node_t *gn, void *data);
 
-typedef void zio_transform_func_t(zio_t *zio, void *data, uint64_t size);
+typedef void zio_transform_func_t(zio_t *zio, void *data, uint64_t size, void *);
 
 typedef struct zio_transform {
 	void			*zt_orig_data;
 	uint64_t		zt_orig_size;
 	uint64_t		zt_bufsize;
 	zio_transform_func_t	*zt_transform;
+	void		   *zt_transform_arg;
 	struct zio_transform	*zt_next;
 } zio_transform_t;
 
@@ -354,13 +357,18 @@ typedef int zio_pipe_stage_t(zio_t *zio);
 
 /*
  * The io_reexecute flags are distinct from io_flags because the child must
- * be able to propagate them to the parent.  The normal io_flags are local
+ * be able to propagate them to the parent.	 The normal io_flags are local
  * to the zio, not protected by any lock, and not modifiable by children;
  * the reexecute flags are protected by io_lock, modifiable by children,
  * and always propagated -- even when ZIO_FLAG_DONT_PROPAGATE is set.
  */
 #define	ZIO_REEXECUTE_NOW	0x01
 #define	ZIO_REEXECUTE_SUSPEND	0x02
+#define ZIO_REEXECUTE_LOG       0x04
+
+#define ZIO_REEXECUTE(zio)                              \
+    (((zio)->io_reexecute & ZIO_REEXECUTE_NOW) |    \
+     ((zio)->io_reexecute & ZIO_REEXECUTE_SUSPEND))
 
 typedef struct zio_link {
 	zio_t		*zl_parent;
@@ -405,6 +413,7 @@ struct zio {
 
 	/* Stuff for the vdev stack */
 	vdev_t		*io_vd;
+	struct vdev_ops	*io_vd_ops;
 	void		*io_vsd;
 	const zio_vsd_ops_t *io_vsd_ops;
 
@@ -440,7 +449,8 @@ struct zio {
 	uint64_t	io_ena;
 
 	/* Taskq dispatching state */
-	taskq_ent_t	io_tqent;
+	//taskq_ent_t	io_tqent;
+	taskq_ent_t	*io_tqent;
 };
 
 extern zio_t *zio_null(zio_t *pio, spa_t *spa, vdev_t *vd,
@@ -459,8 +469,8 @@ extern zio_t *zio_write(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp,
     int priority, enum zio_flag flags, const zbookmark_t *zb);
 
 extern zio_t *zio_rewrite(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp,
-    void *data, uint64_t size, zio_done_func_t *done, void *private,
-    int priority, enum zio_flag flags, zbookmark_t *zb);
+    void *data, uint64_t size, zio_prop_t *zp, zio_done_func_t *done,
+    void *private, int priority, enum zio_flag flags, zbookmark_t *zb);
 
 extern void zio_write_override(zio_t *zio, blkptr_t *bp, int copies);
 
@@ -486,7 +496,8 @@ extern zio_t *zio_write_phys(zio_t *pio, vdev_t *vd, uint64_t offset,
 extern zio_t *zio_free_sync(zio_t *pio, spa_t *spa, uint64_t txg,
     const blkptr_t *bp, enum zio_flag flags);
 
-extern int zio_alloc_zil(spa_t *spa, uint64_t txg, blkptr_t *new_bp,
+extern int
+zio_alloc_zil(spa_t *spa, uint64_t txg, blkptr_t *new_bp, blkptr_t *old_bp,
     uint64_t size, boolean_t use_slog);
 extern void zio_free_zil(spa_t *spa, uint64_t txg, blkptr_t *bp);
 extern void zio_flush(zio_t *zio, vdev_t *vd);
@@ -511,7 +522,8 @@ extern void zio_vdev_free(void *buf);
 
 extern void zio_resubmit_stage_async(void *);
 
-extern zio_t *zio_vdev_child_io(zio_t *zio, blkptr_t *bp, vdev_t *vd,
+extern zio_t *
+zio_vdev_child_io(zio_t *pio, blkptr_t *bp, vdev_t *vd, struct vdev_ops *ops,
     uint64_t offset, void *data, uint64_t size, int type, int priority,
     enum zio_flag flags, zio_done_func_t *done, void *private);
 

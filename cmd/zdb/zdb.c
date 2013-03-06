@@ -2839,7 +2839,8 @@ zdb_read_block(char *thing, spa_t *spa)
 		/*
 		 * Treat this as a vdev child I/O.
 		 */
-		zio_nowait(zio_vdev_child_io(zio, bp, vd, offset, pbuf, psize,
+		zio_nowait(zio_vdev_child_io(zio, bp, vd, vd->vdev_ops,
+            offset, pbuf, psize,
 		    ZIO_TYPE_READ, ZIO_PRIORITY_SYNC_READ,
 		    ZIO_FLAG_DONT_CACHE | ZIO_FLAG_DONT_QUEUE |
 		    ZIO_FLAG_DONT_PROPAGATE | ZIO_FLAG_DONT_RETRY |

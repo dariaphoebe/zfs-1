@@ -359,6 +359,7 @@ zfs_external_acl(znode_t *zp)
 		return (0);
 	}
 #endif
+    return 0;
 }
 
 /*
@@ -437,6 +438,7 @@ zfs_znode_acl_version(znode_t *zp)
 		}
 #endif
 	}
+    return 0;
 }
 
 static int
@@ -452,6 +454,7 @@ static int
 zfs_acl_version_zp(znode_t *zp)
 {
     //	return (zfs_acl_version(ZTOZSB(zp)->z_version));
+    return 0;
 }
 
 zfs_acl_t *
