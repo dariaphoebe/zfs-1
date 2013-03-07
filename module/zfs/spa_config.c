@@ -109,13 +109,6 @@ spa_config_load(void)
 	if (kobj_read_file(file, buf, fsize, 0) < 0)
 		goto out;
 
-    {
-        int i;
-        for (i = 0; i < 16; i++)
-            printf(" 0x%02x", ((char *)buf)[i]);
-        printf("\n");
-    }
-
 	/*
 	 * Unpack the nvlist.
 	 */

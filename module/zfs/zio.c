@@ -80,7 +80,6 @@ kmem_cache_t *zio_data_buf_cache[SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT];
 #ifdef _KERNEL
 extern vmem_t *zio_alloc_arena;
 #endif
-extern uint_t zfs_mvector_max_size;
 
 /*
  * An allocating zio is one that either currently has the DVA allocate
@@ -457,7 +456,7 @@ zio_wait_for_children(zio_t *zio, enum zio_child child, enum zio_wait_type wait)
 	if (*countp != 0) {
 		zio->io_stage >>= 1;
 		zio->io_stall = countp;
-		waiting = B_TRUE;
+        waiting = B_TRUE;
 	}
 	mutex_exit(&zio->io_lock);
 
@@ -505,7 +504,6 @@ zio_create(zio_t *pio, spa_t *spa, uint64_t txg, const blkptr_t *bp,
 {
 	zio_t *zio;
 
-	ASSERT3U(size, <=, zfs_mvector_max_size);
 	ASSERT(P2PHASE(size, SPA_MINBLOCKSIZE) == 0);
 	ASSERT(P2PHASE(offset, SPA_MINBLOCKSIZE) == 0);
 
@@ -972,8 +970,9 @@ zio_write_bp_init(zio_t *zio)
 	 * wait for them and then repeat this pipeline stage.
 	 */
 	if (zio_wait_for_children(zio, ZIO_CHILD_GANG, ZIO_WAIT_READY) ||
-	    zio_wait_for_children(zio, ZIO_CHILD_LOGICAL, ZIO_WAIT_READY))
+	    zio_wait_for_children(zio, ZIO_CHILD_LOGICAL, ZIO_WAIT_READY)) {
 		return (ZIO_PIPELINE_STOP);
+    }
 
 	if (!IO_IS_ALLOCATING(zio)) {
 			return (ZIO_PIPELINE_CONTINUE);
@@ -1020,7 +1019,6 @@ zio_write_bp_init(zio_t *zio)
 			zio->io_pipeline = ZIO_DDT_WRITE_PIPELINE;
 		}
 	}
-
 	return (ZIO_PIPELINE_CONTINUE);
 }
 
@@ -1123,6 +1121,7 @@ void
 zio_execute(zio_t *zio)
 {
 	zio->io_executor = curthread;
+
 
 	while (zio->io_stage < ZIO_STAGE_DONE) {
 		enum zio_stage pipeline = zio->io_pipeline;
@@ -1647,8 +1646,6 @@ zio_write_gang_member_ready(zio_t *zio)
 
 	ASSERT(zio->io_child_type == ZIO_CHILD_GANG);
 	ASSERT3U(zio->io_prop.zp_copies, ==, gio->io_prop.zp_copies);
-	ASSERT3U(zio->io_prop.zp_copies, <=, BP_GET_COPIES(zio->io_bp));
-	ASSERT3U(pio->io_prop.zp_copies, <=, BP_GET_COPIES(pio->io_bp));
 	ASSERT3U(BP_GET_NDVAS(zio->io_bp), <=, BP_GET_NDVAS(pio->io_bp));
 
 	mutex_enter(&pio->io_lock);
@@ -1870,6 +1867,7 @@ zio_ddt_collision(zio_t *zio, ddt_t *ddt, ddt_entry_t *dde)
 
 		if (ddp->ddp_phys_birth != 0) {
             arc_buf_t *abuf = NULL;
+            uint32_t aflags = ARC_WAIT;
 			blkptr_t blk = *zio->io_bp;
 			int error;
 
@@ -1879,7 +1877,7 @@ zio_ddt_collision(zio_t *zio, ddt_t *ddt, ddt_entry_t *dde)
 
 			error = arc_read(NULL, spa, &blk, BP_GET_LSIZE(&blk),
 			    arc_getbuf_func, &abuf, ZIO_PRIORITY_SYNC_READ,
-			    ZIO_FLAG_CANFAIL | ZIO_FLAG_SPECULATIVE, 0,
+			    ZIO_FLAG_CANFAIL | ZIO_FLAG_SPECULATIVE, &aflags,
 			    &zio->io_bookmark);
 
 			if (error == 0) {
@@ -2143,7 +2141,6 @@ zio_dva_allocate(zio_t *zio)
 	}
 
 	ASSERT(BP_IS_HOLE(bp));
-	ASSERT3U(BP_GET_COPIES(bp), ==, 0);
 	ASSERT3U(zio->io_prop.zp_copies, >, 0);
 	ASSERT3U(zio->io_prop.zp_copies, <=, spa_max_replication(spa));
 	ASSERT3U(zio->io_size, ==, BP_GET_PSIZE(bp));
@@ -2703,12 +2700,14 @@ zio_done(zio_t *zio)
 	if (zio_wait_for_children(zio, ZIO_CHILD_VDEV, ZIO_WAIT_DONE) ||
 	    zio_wait_for_children(zio, ZIO_CHILD_GANG, ZIO_WAIT_DONE) ||
 	    zio_wait_for_children(zio, ZIO_CHILD_DDT, ZIO_WAIT_DONE) ||
-	    zio_wait_for_children(zio, ZIO_CHILD_LOGICAL, ZIO_WAIT_DONE))
+	    zio_wait_for_children(zio, ZIO_CHILD_LOGICAL, ZIO_WAIT_DONE)) {
 		return (ZIO_PIPELINE_STOP);
+    }
 
 	for (c = 0; c < ZIO_CHILD_TYPES; c++)
-		for (w = 0; w < ZIO_WAIT_TYPES; w++)
+		for (w = 0; w < ZIO_WAIT_TYPES; w++) {
 			ASSERT(zio->io_children[c][w] == 0);
+        }
 
 	if (bp != NULL) {
 		ASSERT(bp->blk_pad[0] == 0);
@@ -2719,7 +2718,6 @@ zio_done(zio_t *zio)
 		    zio->io_bp_override == NULL &&
 		    !(zio->io_flags & ZIO_FLAG_IO_REPAIR)) {
 			ASSERT(!BP_SHOULD_BYTESWAP(bp));
-			ASSERT3U(zio->io_prop.zp_copies, <=, BP_GET_COPIES(bp));
 			ASSERT(BP_COUNT_GANG(bp) == 0 ||
 			    (BP_COUNT_GANG(bp) == BP_GET_NDVAS(bp)));
 		}
@@ -2943,7 +2941,7 @@ zio_done(zio_t *zio)
 	for (pio = zio_walk_parents(zio); pio != NULL; pio = pio_next) {
 		zio_link_t *zl = zio->io_walk_link;
 		pio_next = zio_walk_parents(zio);
-		zio_remove_child(pio, zio, zl);
+	zio_remove_child(pio, zio, zl);
 		zio_notify_parent(pio, zio, ZIO_WAIT_DONE);
 	}
 
